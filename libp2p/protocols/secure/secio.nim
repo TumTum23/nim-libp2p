@@ -183,12 +183,13 @@ proc readMessage(sconn: SecureConnection): Future[seq[byte]] {.async.} =
     await sconn.readExactly(addr buf[0], 4)
     let length = (int(buf[0]) shl 24) or (int(buf[1]) shl 16) or
                   (int(buf[2]) shl 8) or (int(buf[3]))
-    trace "Recieved message header", header = toHex(buf), length = length
+    trace "Received message header", header = toHex(buf), length = length, stream_oid = $sconn.stream.oid
     if length <= SecioMaxMessageSize:
       buf.setLen(length)
       await sconn.readExactly(addr buf[0], length)
       trace "Received message body", length = length,
-                                     buffer = toHex(buf)
+                                     buffer = toHex(buf),
+                                     stream_oid = $sconn.stream.oid
       if sconn.macCheckAndDecode(buf):
         result = buf
       else:
@@ -196,9 +197,9 @@ proc readMessage(sconn: SecureConnection): Future[seq[byte]] {.async.} =
     else:
       trace "Received message header size is more then allowed",
             length = length, allowed_length = SecioMaxMessageSize
-  except AsyncStreamIncompleteError:
+  except LPStreamIncompleteError:
     trace "Connection dropped while reading"
-  except AsyncStreamReadError:
+  except LPStreamReadError:
     trace "Error reading from connection"
 
 proc writeMessage(sconn: SecureConnection, message: seq[byte]) {.async.} =

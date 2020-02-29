@@ -50,6 +50,28 @@ suite "BufferStream":
     check:
       waitFor(testRead()) == true
 
+  test "read2":
+    proc testRead2(): Future[bool] {.async.} =
+      proc writeHandler(data: seq[byte]) {.async, gcsafe.} =
+        discard
+
+      let buff = newBufferStream(writeHandler, 4)
+      check buff.len == 0
+
+      proc reader() {.async.} =
+        echo await buff.read()
+        echo await buff.read()
+        echo await buff.read()
+
+      proc writer() {.async.} =
+        await buff.pushTo(cast[seq[byte]](@"12345"))
+
+      await allFutures(writer(), reader())
+      result = true
+
+    check:
+      waitFor(testRead2()) == true
+
   test "read with size":
     proc testRead(): Future[bool] {.async.} =
       proc writeHandler(data: seq[byte]) {.async, gcsafe.} = discard

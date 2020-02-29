@@ -30,7 +30,7 @@
 ## will suspend until either the amount of elements in the
 ## buffer goes below ``maxSize`` or more data becomes available.
 
-import deques, math
+import deques, math, oids
 import chronos
 import ../stream/lpstream
 
@@ -63,6 +63,7 @@ proc requestReadBytes(s: BufferStream): Future[void] =
   ## data becomes available in the read buffer
   result = newFuture[void]()
   s.readReqs.addLast(result)
+  echo "requestReadBytes(): added a future to readReqs"
 
 proc initBufferStream*(s: BufferStream,
                        handler: WriteHandler = nil,
@@ -74,6 +75,7 @@ proc initBufferStream*(s: BufferStream,
   s.lock = newAsyncLock()
   s.writeHandler = handler
   s.closeEvent = newAsyncEvent()
+  s.oid = genOid()
 
 proc newBufferStream*(handler: WriteHandler = nil,
                       size: int = DefaultBufferSize): BufferStream =
@@ -110,10 +112,12 @@ proc pushTo*(s: BufferStream, data: seq[byte]) {.async.} =
       while index < data.len and s.readBuf.len < s.maxSize:
         s.readBuf.addLast(data[index])
         inc(index)
+      echo "pushTo(): added ", index, " bytes to readBuf. stream.oid = ", s.oid
 
       # resolve the next queued read request
       if s.readReqs.len > 0:
         s.readReqs.popFirst().complete()
+        echo "pushTo(): completed a readReqs future stream.oid = ", s.oid
 
       if index >= data.len:
         return
@@ -130,12 +134,18 @@ method read*(s: BufferStream, n = -1): Future[seq[byte]] {.async.} =
   ##
   ## This procedure allocates buffer seq[byte] and return it as result.
   ##
+  echo "in read(), n = ", n, ", stream.oid = ", s.oid
   var size = if n > 0: n else: s.readBuf.len()
   var index = 0
+
+  if s.readBuf.len() == 0:
+    await s.requestReadBytes()
+
   while index < size:
     while s.readBuf.len() > 0 and index < size:
       result.add(s.popFirst())
       inc(index)
+    echo "read(): read ", index, " bytes", ". stream.oid = ", s.oid
 
     if index < size:
       await s.requestReadBytes()
